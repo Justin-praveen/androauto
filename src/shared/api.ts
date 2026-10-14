@@ -8,6 +8,9 @@ import type {
   ProjectSummary,
   RecordMode,
   RecorderStatus,
+  BatchStatus,
+  Run,
+  RunSummary,
   SaveFlowRequest,
   SetupCheck,
   ElementInfo
@@ -58,6 +61,15 @@ export interface InvokeApi {
   'recorder:addAssert': (x: number, y: number, kind: 'assertVisible' | 'assertText') => RecorderStatus
   'recorder:save': (req: SaveFlowRequest) => Flow
   'recorder:discard': () => RecorderStatus
+
+  /** Runs flows one after another, in the given order. */
+  'runs:start': (opts: { projectId: string; flowIds: string[]; serial: string; continueOnFailure?: boolean }) => BatchStatus
+  'runs:abort': () => BatchStatus | null
+  'runs:status': () => BatchStatus | null
+  'runs:list': (projectId: string) => RunSummary[]
+  'runs:get': (projectId: string, runId: string) => Run
+  /** A run's screenshot as a data URL. */
+  'runs:image': (projectId: string, runId: string, file: string) => string
 }
 
 /** Pushed from main to the UI. */
@@ -65,6 +77,7 @@ export interface EventApi {
   'devices:changed': Device[]
   'recorder:status': RecorderStatus
   'mirror:frame': MirrorFrame
+  'runs:status': BatchStatus
 }
 
 type Promisify<F> = F extends (...args: infer A) => infer R ? (...args: A) => Promise<Awaited<R>> : never
@@ -82,7 +95,8 @@ export const INVOKE_CHANNELS: (keyof InvokeApi)[] = [
   'mirror:start', 'mirror:stop', 'mirror:elementAt',
   'recorder:start', 'recorder:stop', 'recorder:status', 'recorder:deleteStep', 'recorder:addWait',
   'recorder:mirrorGesture', 'recorder:mirrorText', 'recorder:mirrorKey', 'recorder:addAssert',
-  'recorder:save', 'recorder:discard'
+  'recorder:save', 'recorder:discard',
+  'runs:start', 'runs:abort', 'runs:status', 'runs:list', 'runs:get', 'runs:image'
 ]
 
-export const EVENT_CHANNELS: (keyof EventApi)[] = ['devices:changed', 'recorder:status', 'mirror:frame']
+export const EVENT_CHANNELS: (keyof EventApi)[] = ['devices:changed', 'recorder:status', 'mirror:frame', 'runs:status']

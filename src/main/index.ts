@@ -5,6 +5,7 @@ import { AppiumManager } from './appium-manager'
 import { DeviceManager } from './device-manager'
 import { registerIpc, sender, type Services } from './ipc'
 import { Mirror } from './mirror'
+import { RunService } from './player/runner'
 import { RecorderService } from './recorder/service'
 import { Store } from './store'
 
@@ -41,7 +42,8 @@ app.whenReady().then(() => {
   const appium = new AppiumManager(app.getAppPath())
   const mirror = new Mirror()
   const recorder = new RecorderService(devices, appium, mirror, store)
-  const svc: Services = { adb, store, devices, appium, mirror, recorder }
+  const runner = new RunService(devices, appium, recorder, store)
+  const svc: Services = { adb, store, devices, appium, mirror, recorder, runner }
 
   registerIpc(svc, sender(() => win?.webContents ?? null))
   devices.start()
@@ -54,6 +56,7 @@ app.whenReady().then(() => {
   })
   app.on('before-quit', () => {
     devices.stop()
+    runner.abort()
     mirror.stop()
     appium.stop()
     void recorder.discard()

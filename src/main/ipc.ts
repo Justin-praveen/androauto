@@ -7,6 +7,7 @@ import type { Adb } from './adb/adb'
 import type { AppiumManager } from './appium-manager'
 import type { DeviceManager } from './device-manager'
 import type { Mirror } from './mirror'
+import type { RunService } from './player/runner'
 import type { RecorderService } from './recorder/service'
 import type { Store } from './store'
 
@@ -17,6 +18,7 @@ export interface Services {
   appium: AppiumManager
   mirror: Mirror
   recorder: RecorderService
+  runner: RunService
 }
 
 type Handlers = { [K in keyof InvokeApi]: (...args: Parameters<InvokeApi[K]>) => ReturnType<InvokeApi[K]> | Promise<ReturnType<InvokeApi[K]>> }
@@ -34,7 +36,7 @@ export async function setupCheck(svc: Services): Promise<SetupCheck> {
 }
 
 export function registerIpc(svc: Services, send: <K extends keyof EventApi>(ch: K, payload: EventApi[K]) => void): void {
-  const { store, devices, appium, mirror, recorder } = svc
+  const { store, devices, appium, mirror, recorder, runner } = svc
   const h: Handlers = {
     'projects:list': () => store.listProjects(),
     'projects:create': (input) => store.createProject(input),
@@ -62,11 +64,14 @@ export function registerIpc(svc: Services, send: <K extends keyof EventApi>(ch: 
 
     'mirror:start': (serial) => mirror.start(devices.shell(serial)),
     'mirror:stop': () => {
-      if (recorder.status().state !== 'recording') mirror.stop()
+      if (recorder.status().state !== 'recording' && runner.status()?.state !== 'running') mirror.stop()
     },
     'mirror:elementAt': (x, y) => recorder.elementAt(x, y),
 
-    'recorder:start': (opts) => recorder.start(opts),
+    'recorder:start': (opts) => {
+      if (runner.status()?.state === 'running') throw new Error('Wait for the current run to finish')
+      return recorder.start(opts)
+    },
     'recorder:stop': () => recorder.stop(),
     'recorder:status': () => recorder.status(),
     'recorder:deleteStep': (id) => recorder.deleteStep(id),
@@ -76,7 +81,17 @@ export function registerIpc(svc: Services, send: <K extends keyof EventApi>(ch: 
     'recorder:mirrorKey': (key) => recorder.mirrorKey(key),
     'recorder:addAssert': (x, y, kind) => recorder.addAssert(x, y, kind),
     'recorder:save': (req) => recorder.save(req),
-    'recorder:discard': () => recorder.discard()
+    'recorder:discard': () => recorder.discard(),
+
+    'runs:start': (opts) => runner.start(opts),
+    'runs:abort': () => runner.abort(),
+    'runs:status': () => runner.status(),
+    'runs:list': (projectId) => store.listRuns(projectId),
+    'runs:get': (projectId, runId) => store.getRun(projectId, runId),
+    'runs:image': (projectId, runId, file) => {
+      const type = file.endsWith('.png') ? 'image/png' : 'text/xml'
+      return `data:${type};base64,${store.readRunFile(projectId, runId, file).toString('base64')}`
+    }
   }
 
   for (const [ch, fn] of Object.entries(h)) {
@@ -86,6 +101,7 @@ export function registerIpc(svc: Services, send: <K extends keyof EventApi>(ch: 
   devices.on('changed', (list) => send('devices:changed', list))
   recorder.on('status', (st) => send('recorder:status', st))
   mirror.on('frame', (f) => send('mirror:frame', f))
+  runner.on('status', (b) => send('runs:status', b))
 }
 
 export function sender(getContents: () => WebContents | null) {

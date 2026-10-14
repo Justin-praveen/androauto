@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import type { Device, ProjectSummary, RecorderStatus, SetupCheck } from '@shared/types'
+import type { BatchStatus, Device, ProjectSummary, RecorderStatus, SetupCheck } from '@shared/types'
 import { api } from './api'
 
-export type Page = 'projects' | 'flows' | 'recorder' | 'devices'
+export type Page = 'projects' | 'flows' | 'recorder' | 'runs' | 'devices'
 
 interface AppState {
   page: Page
@@ -17,6 +17,10 @@ interface AppState {
   setSerial: (s: string | null) => void
   device: Device | null
   recorder: RecorderStatus
+  batch: BatchStatus | null
+  /** Run report open on the Runs page; null shows the overview. */
+  runId: string | null
+  openRun: (id: string | null) => void
   setup: SetupCheck | null
   refreshSetup: () => Promise<void>
   toast: (msg: string, kind?: 'error' | 'ok') => void
@@ -51,6 +55,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [serial, setSerialRaw] = useState<string | null>(load('androauto.serial'))
   const [recorder, setRecorder] = useState<RecorderStatus>(IDLE)
   const [setup, setSetup] = useState<SetupCheck | null>(null)
+  const [batch, setBatch] = useState<BatchStatus | null>(null)
+  const [runId, setRunId] = useState<string | null>(null)
+  const openRun = useCallback((id: string | null) => {
+    setRunId(id)
+    setPage('runs')
+  }, [])
   const [toastMsg, setToast] = useState<AppState['toastMsg']>(null)
 
   const toast = useCallback((msg: string, kind: 'error' | 'ok' = 'error') => {
@@ -80,7 +90,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     void refreshSetup()
     void api.invoke('devices:list').then(setDevices)
     void api.invoke('recorder:status').then(setRecorder)
-    const offs = [api.on('devices:changed', setDevices), api.on('recorder:status', setRecorder)]
+    void api.invoke('runs:status').then(setBatch)
+    const offs = [api.on('devices:changed', setDevices), api.on('recorder:status', setRecorder), api.on('runs:status', setBatch)]
     return () => offs.forEach((off) => off())
   }, [reloadProjects, refreshSetup])
 
@@ -108,12 +119,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setSerial,
       device: devices.find((d) => d.serial === serial) ?? null,
       recorder,
+      batch,
+      runId,
+      openRun,
       setup,
       refreshSetup,
       toast,
       toastMsg
     }),
-    [page, projects, reloadProjects, projectId, setProjectId, devices, serial, setSerial, recorder, setup, refreshSetup, toast, toastMsg]
+    [page, projects, reloadProjects, projectId, setProjectId, devices, serial, setSerial, recorder, batch, runId, openRun, setup, refreshSetup, toast, toastMsg]
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

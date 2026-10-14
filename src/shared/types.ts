@@ -95,6 +95,7 @@ export interface Flow {
 
 export type FlowSummary = Pick<Flow, 'id' | 'projectId' | 'name' | 'tags' | 'version' | 'updatedAt'> & {
   stepCount: number
+  lastRun?: { id: string; status: RunStatus; startedAt: string; durationMs: number; failedStep: number | null }
 }
 
 export type RecordMode = 'phone' | 'mirror'
@@ -139,4 +140,53 @@ export interface SaveFlowRequest {
 export interface InstalledApp {
   package: string
   activity: string | null
+}
+
+// ---- Replay (spec section 5) ---------------------------------------------------------------
+
+export type RunStatus = 'queued' | 'running' | 'passed' | 'failed' | 'aborted'
+export type StepStatus = 'pending' | 'running' | 'passed' | 'warning' | 'failed' | 'skipped'
+
+export interface RunStepResult {
+  stepId: string
+  status: StepStatus
+  /** Locator strategy that found the element, or 'coordinates' when the fallback point was used. */
+  locatorUsed?: string
+  durationMs?: number
+  error?: string
+  warning?: string
+  /** File names inside the run folder. */
+  screenshot?: string
+  hierarchy?: string
+}
+
+export interface Run {
+  id: string
+  projectId: string
+  flowId: string
+  flowName: string
+  flowVersion: number
+  device: string
+  deviceModel: string
+  status: RunStatus
+  startedAt: string
+  durationMs: number
+  error?: string
+  steps: RunStepResult[]
+  batchId?: string
+}
+
+export type RunSummary = Omit<Run, 'steps'> & { failedStep: number | null; stepCount: number }
+
+export interface BatchStatus {
+  id: string
+  projectId: string
+  serial: string
+  state: 'running' | 'done' | 'aborted'
+  startedAt: number
+  finishedAt: number | null
+  /** One entry per flow, in run order. */
+  runs: Run[]
+  /** Index into runs of the flow running now. */
+  current: number
 }

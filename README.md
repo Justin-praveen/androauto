@@ -1,8 +1,8 @@
 # androauto
 
-Record a flow on your Android phone once, save it by name, and (next update) replay it as an automated test. No automation code to write.
+Record a flow on your Android phone once, save it by name, and replay it as an automated test with a pass or fail result. No automation code to write.
 
-This is the first build: projects, device connection, and the recorder. Replay, run reports and AI come next.
+This build has projects, device connection, the recorder, and replay with run reports. AI comes next.
 
 ## What you need
 
@@ -24,6 +24,12 @@ Then:
 1. **Projects › New project.** With the phone connected, pick your app from the list (fills in package and activity), or type the package name.
 2. **Devices.** Check the phone shows a green dot and the setup checklist is green.
 3. **Recorder.** Choose a mode, tick *Launch app first*, hit **Record**, do your flow, hit **Stop & save**, name it. It appears under **Flows**.
+4. **Flows.** Press ▶ on a row to play one flow, tick several and press **Run selected**, or press **Run all**. Flows run one after another on the selected phone.
+5. **Runs.** Watch progress live, then see the result: how many passed and failed, and for each flow the step it failed at. Click a run for its report: every step with pass/fail, the screenshot after it, and the error.
+
+### How replay works
+
+Each step looks for its element with the recorded locators in order (id, accessibility label, text, XPath) and waits up to the step's timeout (10s) for it to appear. If none match, a tap falls back to the recorded screen position and is marked with a warning; a *Check* step fails. A flow stops at its first failed step and the remaining steps are skipped; the next flow still runs. Each flow starts by force-stopping and relaunching the app (or clearing its data if the project says so). Run reports are saved under `runs/` in the project folder.
 
 ### Two ways to record
 
@@ -32,7 +38,7 @@ Then:
 
 ### Appium is optional for recording
 
-When Appium and the UiAutomator2 driver are installed, androauto starts Appium in the background and reads the screen through it (faster). Without them it falls back to `uiautomator dump` over adb, which is slower but needs nothing extra. The top of the Recorder says which one is in use. Replay (next update) will need Appium.
+When Appium and the UiAutomator2 driver are installed, androauto starts Appium in the background and reads the screen through it (faster). Without them it falls back to `uiautomator dump` over adb, which is slower but needs nothing extra. The top of the Recorder says which one is in use. Replay uses the same choice.
 
 ## Where things are saved
 
@@ -41,6 +47,7 @@ When Appium and the UiAutomator2 driver are installed, androauto starts Appium i
   projects/<project-id>/project.json
   projects/<project-id>/flows/<flow-name>.json        the flow
   projects/<project-id>/flows/<flow-name>/snapshots/  screenshot + UI XML per step
+  projects/<project-id>/runs/<run-id>/                report.json + a screenshot per step (+ UI XML on failure)
   secrets.json                                        password values (not in flows)
 ```
 
@@ -78,9 +85,10 @@ src/shared/          types (spec section 3) and the IPC contract
 src/main/adb/        adb wrapper and output parsers
 src/main/hierarchy/  UI XML parsing, element-at-point, locator generation
 src/main/recorder/   getevent parsing, gesture classification, recorder engine, save
+src/main/player/     flow player (find element, act, screenshot) and the batch runner
 src/main/            device manager, Appium manager, mirror, store, IPC, window
-src/renderer/        React UI (Projects, Flows, Recorder, Devices)
+src/renderer/        React UI (Projects, Flows, Recorder, Runs, Devices)
 tests/               vitest suites and fixtures
 ```
 
-Differences from `docs/spec.md` in this first build, each easy to change later: flows are listed by scanning the JSON files rather than a SQLite index (no native module to compile on install); the mirror uses `screencap` rather than scrcpy; IPC is a typed `invoke` bridge rather than tRPC.
+Differences from `docs/spec.md` in this first build, each easy to change later: flows are listed by scanning the JSON files rather than a SQLite index (no native module to compile on install); the mirror uses `screencap` rather than scrcpy; IPC is a typed `invoke` bridge rather than tRPC; replay performs actions with adb input commands and finds elements in UI snapshots (from Appium or adb) rather than through a WebdriverIO session, so it works without Appium too.

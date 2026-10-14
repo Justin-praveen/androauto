@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, chmodSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { Flow, FlowSummary, Project, ProjectSummary } from '@shared/types'
+import type { Flow, FlowSummary, Project, ProjectSummary, Run, RunSummary } from '@shared/types'
 import type { NewProjectInput } from '@shared/api'
 import type { StepArtifacts } from './recorder/engine'
 
@@ -109,17 +109,23 @@ export class Store {
   }
 
   listFlows(projectId: string): FlowSummary[] {
+    const last = new Map<string, RunSummary>()
+    for (const r of this.listRuns(projectId)) if (!last.has(r.flowId) && r.status !== 'running' && r.status !== 'queued') last.set(r.flowId, r)
     return this.flowFiles(projectId)
       .map((f) => readJson<Flow>(join(this.flowsDir(projectId), f)))
-      .map((f) => ({
-        id: f.id,
-        projectId: f.projectId,
-        name: f.name,
-        tags: f.tags,
-        version: f.version,
-        updatedAt: f.updatedAt,
-        stepCount: f.steps.length
-      }))
+      .map((f) => {
+        const r = last.get(f.id)
+        return {
+          id: f.id,
+          projectId: f.projectId,
+          name: f.name,
+          tags: f.tags,
+          version: f.version,
+          updatedAt: f.updatedAt,
+          stepCount: f.steps.length,
+          ...(r ? { lastRun: { id: r.id, status: r.status, startedAt: r.startedAt, durationMs: r.durationMs, failedStep: r.failedStep } } : {})
+        }
+      })
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   }
 
@@ -164,6 +170,56 @@ export class Store {
     const file = this.findFlowFile(projectId, flowId)
     rmSync(file.replace(/\.json$/, ''), { recursive: true, force: true })
     rmSync(file)
+  }
+
+  // ---- runs --------------------------------------------------------------------------------
+
+  /** Run ids sort by start time: run_<base36 ms><random>. */
+  newRunId(): string {
+    return `run_${Date.now().toString(36)}${randomBytes(2).toString('hex')}`
+  }
+
+  runDir(projectId: string, runId: string): string {
+    if (!/^run_[\w-]+$/.test(runId)) throw new Error(`Bad run id: ${runId}`)
+    return join(this.projectDir(projectId), 'runs', runId)
+  }
+
+  saveRun(run: Run): void {
+    const dir = this.runDir(run.projectId, run.id)
+    mkdirSync(dir, { recursive: true })
+    writeJson(join(dir, 'report.json'), run)
+  }
+
+  writeRunFile(projectId: string, runId: string, name: string, data: Buffer | string): void {
+    if (!/^[\w.-]+$/.test(name)) throw new Error(`Bad file name: ${name}`)
+    const dir = this.runDir(projectId, runId)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, name), data)
+  }
+
+  readRunFile(projectId: string, runId: string, name: string): Buffer {
+    if (!/^[\w.-]+$/.test(name)) throw new Error(`Bad file name: ${name}`)
+    return readFileSync(join(this.runDir(projectId, runId), name))
+  }
+
+  getRun(projectId: string, runId: string): Run {
+    return readJson<Run>(join(this.runDir(projectId, runId), 'report.json'))
+  }
+
+  /** Newest first. */
+  listRuns(projectId: string, limit = 200): RunSummary[] {
+    const dir = join(this.projectDir(projectId), 'runs')
+    if (!existsSync(dir)) return []
+    return readdirSync(dir)
+      .filter((d) => d.startsWith('run_') && existsSync(join(dir, d, 'report.json')))
+      .sort()
+      .reverse()
+      .slice(0, limit)
+      .map((d) => {
+        const { steps, ...rest } = readJson<Run>(join(dir, d, 'report.json'))
+        const failed = steps.findIndex((s) => s.status === 'failed')
+        return { ...rest, stepCount: steps.length, failedStep: failed >= 0 ? failed + 1 : null }
+      })
   }
 
   // ---- secrets -----------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 // In-memory backend for previewing the UI in a browser without Electron or a phone.
 
 import type { AndroautoBridge, EventApi, InvokeApi } from '@shared/api'
-import type { Device, ElementInfo, Flow, Project, RecorderStatus, Step } from '@shared/types'
+import type { BatchStatus, Device, ElementInfo, Flow, Project, RecorderStatus, Run, Step } from '@shared/types'
 
 type Handler = (...args: never[]) => unknown
 
@@ -63,6 +63,53 @@ export function createMockBridge(): AndroautoBridge {
   let mirrorTimer: number | undefined
   let scriptTimer: number | undefined
   const frame = screenSvg()
+  const runs: Run[] = []
+  let batch: BatchStatus | null = null
+  let batchTimer: number | undefined
+  const summary = (r: Run) => {
+    const { steps, ...rest } = r
+    const f = steps.findIndex((x) => x.status === 'failed')
+    return { ...rest, stepCount: steps.length, failedStep: f >= 0 ? f + 1 : null }
+  }
+  const tickBatch = (): void => {
+    if (!batch) return
+    const run = batch.runs[batch.current]
+    if (!run) {
+      batch.state = 'done'
+      batch.finishedAt = Date.now()
+      window.clearInterval(batchTimer)
+    } else {
+      if (run.status === 'queued') {
+        run.status = 'running'
+        run.startedAt = new Date().toISOString()
+      }
+      const i = run.steps.findIndex((x) => x.status === 'pending' || x.status === 'running')
+      const failAt = /cart/i.test(run.flowName) ? Math.min(6, run.steps.length - 1) : -1
+      if (i >= 0 && run.steps[i].status === 'pending') run.steps[i].status = 'running'
+      else if (i >= 0) {
+        const st = run.steps[i]
+        st.durationMs = 400 + Math.round(Math.random() * 900)
+        st.screenshot = 'shot.png'
+        if (i === failAt) {
+          st.status = 'failed'
+          st.error = 'Element not found after 10s (tried id, xpath)'
+          run.steps.slice(i + 1).forEach((x) => (x.status = 'skipped'))
+        } else {
+          st.status = 'passed'
+          st.locatorUsed = 'id'
+        }
+      }
+      if (run.steps.every((x) => x.status !== 'pending' && x.status !== 'running')) {
+        const failed = run.steps.some((x) => x.status === 'failed')
+        run.status = failed ? 'failed' : 'passed'
+        run.error = run.steps.find((x) => x.status === 'failed')?.error
+        run.durationMs = run.steps.reduce((a, x) => a + (x.durationMs ?? 0), 0)
+        runs.unshift(structuredClone(run))
+        batch.current++
+      }
+    }
+    emit('runs:status', structuredClone(batch))
+  }
 
   const setStatus = (s: Partial<RecorderStatus>): RecorderStatus => {
     status = { ...status, ...s }
@@ -91,7 +138,13 @@ export function createMockBridge(): AndroautoBridge {
     'projects:update': (id: string, patch: Partial<Project>) => Object.assign(projects.find((p) => p.id === id)!, patch),
     'projects:delete': (id: string) => void projects.splice(projects.findIndex((p) => p.id === id), 1),
     'flows:list': (projectId: string) =>
-      flows.filter((f) => f.projectId === projectId).map((f) => ({ id: f.id, projectId: f.projectId, name: f.name, tags: f.tags, version: f.version, updatedAt: f.updatedAt, stepCount: f.steps.length })),
+      flows.filter((f) => f.projectId === projectId).map((f) => {
+        const r = runs.find((x) => x.flowId === f.id)
+        return {
+          id: f.id, projectId: f.projectId, name: f.name, tags: f.tags, version: f.version, updatedAt: f.updatedAt, stepCount: f.steps.length,
+          ...(r ? { lastRun: { id: r.id, status: r.status, startedAt: r.startedAt, durationMs: r.durationMs, failedStep: summary(r).failedStep } } : {})
+        }
+      }),
     'flows:get': (_p: string, id: string) => flows.find((f) => f.id === id),
     'flows:delete': (_p: string, id: string) => void flows.splice(flows.findIndex((f) => f.id === id), 1),
     'devices:list': () => devices,
@@ -166,6 +219,48 @@ export function createMockBridge(): AndroautoBridge {
       setStatus({ state: 'idle', steps: [], serial: status.serial })
       return f
     },
+    'runs:start': (o: { projectId: string; flowIds: string[]; serial: string }) => {
+      const d = devices.find((x) => x.serial === o.serial)!
+      batch = {
+        id: 'bat_demo', projectId: o.projectId, serial: o.serial, state: 'running', startedAt: Date.now(), finishedAt: null, current: 0,
+        runs: o.flowIds.map((id, i) => {
+          const f = flows.find((x) => x.id === id)!
+          return {
+            id: `run_${Date.now().toString(36)}${i}`, projectId: o.projectId, flowId: f.id, flowName: f.name, flowVersion: f.version,
+            device: d.serial, deviceModel: d.model, status: 'queued' as const, startedAt: '', durationMs: 0,
+            steps: f.steps.map((s) => ({ stepId: s.id, status: 'pending' as const }))
+          }
+        })
+      }
+      window.clearInterval(batchTimer)
+      batchTimer = window.setInterval(tickBatch, 350)
+      emit('runs:status', structuredClone(batch))
+      return structuredClone(batch)
+    },
+    'runs:abort': () => {
+      if (batch?.state === 'running') {
+        window.clearInterval(batchTimer)
+        batch.state = 'aborted'
+        batch.finishedAt = Date.now()
+        batch.runs.forEach((r) => {
+          if (r.status === 'queued' || r.status === 'running') {
+            r.status = 'aborted'
+            r.steps.forEach((x) => x.status === 'pending' || x.status === 'running' ? (x.status = 'skipped') : null)
+            runs.unshift(structuredClone(r))
+          }
+        })
+        emit('runs:status', structuredClone(batch))
+      }
+      return batch
+    },
+    'runs:status': () => batch,
+    'runs:list': (projectId: string) => runs.filter((r) => r.projectId === projectId).map(summary),
+    'runs:get': (_p: string, id: string) => {
+      const r = runs.find((x) => x.id === id) ?? batch?.runs.find((x) => x.id === id)
+      if (!r) throw new Error('Run not found')
+      return r
+    },
+    'runs:image': () => frame,
     'recorder:discard': () => {
       window.clearInterval(scriptTimer)
       return setStatus({ state: 'idle', steps: [] })
@@ -191,7 +286,10 @@ function mkFlow(id: string, projectId: string, name: string, tags: string[], n: 
   return {
     id, projectId, name, description: '', tags, version: 1, recordedOn: null,
     startState: { launchApp: true, clearData: false }, variables: {},
-    steps: Array.from({ length: n }, (_, i) => ({ id: `stp_${i + 1}`, action: 'tap' as const, waitBeforeMs: 0, timeoutMs: 10000 })),
+    steps: Array.from({ length: n }, (_, i) => ({
+      id: `stp_${i + 1}`, action: 'tap' as const, waitBeforeMs: 0, timeoutMs: 10000,
+      target: { locators: [], fallbackPoint: { xPct: 0.5, yPct: 0.5 }, element: { class: 'android.widget.Button', text: ['Log in', 'Shoes', 'Add to cart', 'Cart', 'Checkout', 'Size 9', 'Add to bag', 'Pay', 'Done'][i % 9], resourceId: '', contentDesc: '', bounds: [0, 0, 1, 1] as [number, number, number, number] } }
+    })),
     createdAt: t, updatedAt: t
   }
 }

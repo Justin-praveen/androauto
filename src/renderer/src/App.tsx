@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Circle, FolderKanban, ListChecks, Monitor, Moon, Smartphone, Sun } from 'lucide-react'
+import { Circle, FolderKanban, ListChecks, Monitor, Moon, PlayCircle, Smartphone, Sun } from 'lucide-react'
 import { cx, Dot } from './components/ui'
 import { isMock } from './lib/api'
 import { useApp, type Page } from './lib/state'
@@ -7,6 +7,7 @@ import { DevicesPage } from './pages/Devices'
 import { FlowsPage } from './pages/Flows'
 import { ProjectsPage } from './pages/Projects'
 import { RecorderPage } from './pages/Recorder'
+import { RunsPage } from './pages/Runs'
 
 type Theme = 'system' | 'light' | 'dark'
 
@@ -40,11 +41,12 @@ const NAV: { id: Page; label: string; icon: typeof Circle; needsProject?: boolea
   { id: 'projects', label: 'Projects', icon: FolderKanban },
   { id: 'flows', label: 'Flows', icon: ListChecks, needsProject: true },
   { id: 'recorder', label: 'Recorder', icon: Circle, needsProject: true },
+  { id: 'runs', label: 'Runs', icon: PlayCircle, needsProject: true },
   { id: 'devices', label: 'Devices', icon: Smartphone }
 ]
 
 export function App() {
-  const { page, go, projects, projectId, setProjectId, project, recorder, toastMsg } = useApp()
+  const { page, go, projects, projectId, setProjectId, project, recorder, batch, openRun, toastMsg } = useApp()
   const [theme, setTheme] = useTheme()
   const recording = recorder.state === 'recording'
 
@@ -63,7 +65,7 @@ export function App() {
           <select
             value={projectId ?? ''}
             onChange={(e) => setProjectId(e.target.value || null)}
-            disabled={recording}
+            disabled={recording || batch?.state === 'running'}
             className="h-9 w-full cursor-pointer rounded-lg border border-line bg-sunken px-2.5 text-sm outline-none focus:border-accent"
           >
             {projects.length === 0 && <option value="">No projects yet</option>}
@@ -83,7 +85,7 @@ export function App() {
               <button
                 key={n.id}
                 disabled={disabled}
-                onClick={() => go(n.id)}
+                onClick={() => (n.id === 'runs' ? openRun(null) : go(n.id))}
                 className={cx(
                   'flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-40',
                   page === n.id ? 'bg-accent-soft font-medium text-accent' : 'text-muted hover:bg-sunken hover:text-fg'
@@ -92,6 +94,11 @@ export function App() {
                 <Icon size={16} className={n.id === 'recorder' && recording ? 'fill-rec text-rec pulse' : undefined} />
                 {n.label}
                 {n.id === 'recorder' && recording && <span className="ml-auto text-[11px] font-semibold text-rec">REC</span>}
+                {n.id === 'runs' && batch?.state === 'running' && (
+                  <span className="ml-auto text-[11px] font-semibold text-accent">
+                    {Math.min(batch.current + 1, batch.runs.length)}/{batch.runs.length}
+                  </span>
+                )}
               </button>
             )
           })}
@@ -121,6 +128,7 @@ export function App() {
             {page === 'projects' && <ProjectsPage />}
             {page === 'flows' && <FlowsPage />}
             {page === 'recorder' && <RecorderPage />}
+            {page === 'runs' && <RunsPage />}
             {page === 'devices' && <DevicesPage />}
           </div>
         </main>
