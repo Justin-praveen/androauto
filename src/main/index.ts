@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
 import { Adb } from './adb/adb'
+import { AiService } from './ai/service'
 import { AppiumManager } from './appium-manager'
 import { DeviceManager } from './device-manager'
 import { registerIpc, sender, type Services } from './ipc'
@@ -43,7 +44,7 @@ app.whenReady().then(() => {
   const mirror = new Mirror()
   const recorder = new RecorderService(devices, appium, mirror, store)
   const runner = new RunService(devices, appium, recorder, store)
-  const svc: Services = { adb, store, devices, appium, mirror, recorder, runner }
+  const svc: Services = { adb, store, devices, appium, mirror, recorder, runner, ai: new AiService(store) }
 
   registerIpc(svc, sender(() => win?.webContents ?? null))
   devices.start()

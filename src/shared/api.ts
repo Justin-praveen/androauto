@@ -11,6 +11,9 @@ import type {
   BatchStatus,
   Run,
   RunSummary,
+  AiSettings,
+  AiSettingsView,
+  TestIdeas,
   SaveFlowRequest,
   SetupCheck,
   ElementInfo
@@ -70,6 +73,15 @@ export interface InvokeApi {
   'runs:get': (projectId: string, runId: string) => Run
   /** A run's screenshot as a data URL. */
   'runs:image': (projectId: string, runId: string, file: string) => string
+
+  'ai:settings': () => AiSettingsView
+  /** apiKey: omit to keep the stored key, '' to clear it. */
+  'ai:saveSettings': (patch: Partial<AiSettings> & { apiKey?: string }) => AiSettingsView
+  'ai:models': (patch?: { baseUrl?: string; apiKey?: string }) => string[]
+  'ai:test': () => string
+  'ai:suggest': (projectId: string, flowId: string, opts: { count: number; focus?: string }) => TestIdeas
+  'ai:ideas': (projectId: string, flowId: string) => TestIdeas | null
+  'ai:createFlows': (projectId: string, flowId: string, ideaIds: string[]) => Flow[]
 }
 
 /** Pushed from main to the UI. */
@@ -96,7 +108,8 @@ export const INVOKE_CHANNELS: (keyof InvokeApi)[] = [
   'recorder:start', 'recorder:stop', 'recorder:status', 'recorder:deleteStep', 'recorder:addWait',
   'recorder:mirrorGesture', 'recorder:mirrorText', 'recorder:mirrorKey', 'recorder:addAssert',
   'recorder:save', 'recorder:discard',
-  'runs:start', 'runs:abort', 'runs:status', 'runs:list', 'runs:get', 'runs:image'
+  'runs:start', 'runs:abort', 'runs:status', 'runs:list', 'runs:get', 'runs:image',
+  'ai:settings', 'ai:saveSettings', 'ai:models', 'ai:test', 'ai:suggest', 'ai:ideas', 'ai:createFlows'
 ]
 
 export const EVENT_CHANNELS: (keyof EventApi)[] = ['devices:changed', 'recorder:status', 'mirror:frame', 'runs:status']

@@ -1,7 +1,7 @@
 // In-memory backend for previewing the UI in a browser without Electron or a phone.
 
 import type { AndroautoBridge, EventApi, InvokeApi } from '@shared/api'
-import type { BatchStatus, Device, ElementInfo, Flow, Project, RecorderStatus, Run, Step } from '@shared/types'
+import type { AiSettingsView, BatchStatus, Device, ElementInfo, Flow, Project, RecorderStatus, Run, Step, TestIdea, TestIdeas } from '@shared/types'
 
 type Handler = (...args: never[]) => unknown
 
@@ -64,6 +64,25 @@ export function createMockBridge(): AndroautoBridge {
   let scriptTimer: number | undefined
   const frame = screenSvg()
   const runs: Run[] = []
+  let aiSettings: AiSettingsView = { baseUrl: 'http://localhost:20128/v1', model: 'cc/claude-sonnet-4', temperature: 0.4, hasApiKey: true }
+  const ideasByFlow = new Map<string, TestIdeas>()
+  const demoIdeas = (): TestIdea[] => {
+    const mk = (id: number, title: string, category: TestIdea['category'], priority: TestIdea['priority'], description: string, expected: string, changes: TestIdea['changes'], manualSteps: string[] = []): TestIdea => ({
+      id: `idea_${String(id).padStart(2, '0')}`, title, category, priority, description, expected, automatable: changes.length > 0, changes, manualSteps
+    })
+    return [
+      mk(1, 'Empty email', 'negative', 'high', 'Submit the form with the email left blank.', 'An "Email is required" message shows and the user stays on the login screen.', [{ type: 'setText', stepId: 'stp_1', value: '' }, { type: 'stopAfter', stepId: 'stp_3' }, { type: 'assertTextContains', afterStepId: 'stp_3', text: 'required' }]),
+      mk(2, 'Invalid email format', 'negative', 'high', 'Use an address without an @ sign.', 'An invalid email message shows; no login request is made.', [{ type: 'setText', stepId: 'stp_1', value: 'demo.example.com' }, { type: 'stopAfter', stepId: 'stp_3' }]),
+      mk(3, 'Wrong password', 'negative', 'high', 'Valid email with an incorrect password.', 'An "Incorrect password" error shows and the password field is cleared.', [{ type: 'setText', stepId: 'stp_2', value: 'wrong-pass-123' }, { type: 'stopAfter', stepId: 'stp_3' }]),
+      mk(4, 'Email with spaces around it', 'boundary', 'medium', 'Leading and trailing spaces should be trimmed.', 'Login succeeds as with the plain address.', [{ type: 'setText', stepId: 'stp_1', value: '  demo@example.com  ' }]),
+      mk(5, 'Very long email (255 chars)', 'boundary', 'medium', 'Checks the field length limit.', 'The field stops at its limit or shows a clear error; the app does not crash.', [{ type: 'setText', stepId: 'stp_1', value: `${'a'.repeat(243)}@example.com` }, { type: 'stopAfter', stepId: 'stp_3' }]),
+      mk(6, 'Double tap Log in', 'edge', 'medium', 'Tapping twice quickly must not send two logins.', 'One login happens and the home screen shows once.', [{ type: 'repeatStep', stepId: 'stp_3', times: 2 }]),
+      mk(7, 'Back during login', 'edge', 'low', 'Press back right after typing the email.', 'The keyboard closes and the typed email is kept.', [{ type: 'pressKey', afterStepId: 'stp_1', key: 'back' }]),
+      mk(8, 'SQL injection in email', 'security', 'high', "Classic ' OR 1=1 -- string in the email field.", 'Rejected as an invalid email; no server error is shown.', [{ type: 'setText', stepId: 'stp_1', value: "' OR 1=1 --" }, { type: 'stopAfter', stepId: 'stp_3' }]),
+      mk(9, 'Rotate the phone mid-login', 'usability', 'low', 'Typed values should survive a configuration change.', 'Email and password stay filled after rotating.', [], ['Type the email and password', 'Rotate the phone to landscape', 'Check both fields still have their values']),
+      mk(10, 'Login with valid user', 'positive', 'high', 'The recorded happy path.', 'The home screen shows "Welcome back".', [{ type: 'assertTextContains', afterStepId: 'stp_3', text: 'Welcome' }])
+    ]
+  }
   let batch: BatchStatus | null = null
   let batchTimer: number | undefined
   const summary = (r: Run) => {
@@ -261,6 +280,34 @@ export function createMockBridge(): AndroautoBridge {
       return r
     },
     'runs:image': () => frame,
+    'ai:settings': () => aiSettings,
+    'ai:saveSettings': (patch: Partial<AiSettingsView> & { apiKey?: string }) => {
+      const { apiKey, ...rest } = patch
+      aiSettings = { ...aiSettings, ...rest, hasApiKey: apiKey === undefined ? aiSettings.hasApiKey : !!apiKey }
+      return aiSettings
+    },
+    'ai:models': () => ['cc/claude-sonnet-4', 'cc/claude-opus-4', 'gemini/gemini-2.5-pro', 'openrouter/qwen3-coder', 'qa-combo'],
+    'ai:test': () => 'OK',
+    'ai:suggest': async (_p: string, flowId: string) => {
+      await new Promise((r) => setTimeout(r, 1500))
+      const f = flows.find((x) => x.id === flowId)!
+      const d: TestIdeas = { flowId, flowVersion: f.version, model: aiSettings.model, generatedAt: new Date().toISOString(), ideas: demoIdeas() }
+      ideasByFlow.set(flowId, d)
+      return d
+    },
+    'ai:ideas': (_p: string, flowId: string) => ideasByFlow.get(flowId) ?? null,
+    'ai:createFlows': (projectId: string, flowId: string, ids: string[]) => {
+      const src = flows.find((x) => x.id === flowId)!
+      const d = ideasByFlow.get(flowId)!
+      return d.ideas
+        .filter((i) => ids.includes(i.id) && i.automatable)
+        .map((i) => {
+          const f = mkFlow(`flw_${Math.random().toString(16).slice(2, 6)}`, projectId, `${src.name} · ${i.title}`, ['ai', i.category], src.steps.length)
+          flows.push(f)
+          i.createdFlowId = f.id
+          return f
+        })
+    },
     'recorder:discard': () => {
       window.clearInterval(scriptTimer)
       return setStatus({ state: 'idle', steps: [] })

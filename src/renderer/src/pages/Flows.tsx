@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Circle, ListChecks, Play, Search, Trash2 } from 'lucide-react'
+import { Circle, ListChecks, Play, Search, Sparkles, Trash2 } from 'lucide-react'
 import type { FlowSummary } from '@shared/types'
 import { duration, RunStatusLabel } from '../components/status'
 import { Badge, Button, cx, Dialog, Empty, Input, PageHeader } from '../components/ui'
@@ -9,7 +9,7 @@ import { useStartRun } from '../lib/run'
 import { useAction, useApp } from '../lib/state'
 
 export function FlowsPage() {
-  const { project, go, recorder, reloadProjects, batch, device, openRun } = useApp()
+  const { project, go, recorder, reloadProjects, batch, device, openRun, openIdeas } = useApp()
   const run = useAction()
   const startRun = useStartRun()
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -117,7 +117,7 @@ export function FlowsPage() {
                 <th className="px-5 py-3 font-medium">Steps</th>
                 <th className="px-5 py-3 font-medium">Tags</th>
                 <th className="px-5 py-3 font-medium">Last run</th>
-                <th className="w-28 px-5 py-3" />
+                <th className="w-36 px-5 py-3" />
               </tr>
             </thead>
             <tbody>
@@ -153,6 +153,9 @@ export function FlowsPage() {
                   </td>
                   <td className="px-5 py-3.5">
                     <div className="flex justify-end gap-1 opacity-60 transition group-hover:opacity-100">
+                      <Button size="icon" variant="ghost" onClick={() => openIdeas(f.id)} title="AI test ideas" className="text-accent">
+                        <Sparkles size={15} />
+                      </Button>
                       <Button size="icon" variant="ghost" disabled={!canRun} title={runTitle ?? 'Run this flow'} onClick={() => void startRun([f.id])}>
                         <Play size={15} />
                       </Button>

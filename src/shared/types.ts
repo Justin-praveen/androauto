@@ -190,3 +190,50 @@ export interface BatchStatus {
   /** Index into runs of the flow running now. */
   current: number
 }
+
+// ---- AI test ideas (spec section 6) --------------------------------------------------------
+
+export interface AiSettings {
+  /** OpenAI-compatible endpoint, e.g. OmniRoute at http://localhost:20128/v1 */
+  baseUrl: string
+  model: string
+  temperature: number
+}
+
+export interface AiSettingsView extends AiSettings {
+  hasApiKey: boolean
+}
+
+export type TestCategory = 'positive' | 'negative' | 'boundary' | 'edge' | 'security' | 'usability'
+
+export type TestChange =
+  | { type: 'setText'; stepId: string; value: string }
+  | { type: 'removeStep'; stepId: string }
+  | { type: 'repeatStep'; stepId: string; times: number }
+  | { type: 'stopAfter'; stepId: string }
+  | { type: 'pressKey'; afterStepId: string; key: 'back' | 'home' | 'enter' }
+  | { type: 'wait'; afterStepId: string; ms: number }
+  | { type: 'assertTextContains'; afterStepId: string; text: string }
+
+export interface TestIdea {
+  id: string
+  title: string
+  category: TestCategory
+  priority: 'high' | 'medium' | 'low'
+  description: string
+  expected: string
+  /** Can be turned into a flow from the changes below; otherwise it is a manual check. */
+  automatable: boolean
+  changes: TestChange[]
+  manualSteps: string[]
+  /** Flow created from this idea, once the user creates it. */
+  createdFlowId?: string
+}
+
+export interface TestIdeas {
+  flowId: string
+  flowVersion: number
+  model: string
+  generatedAt: string
+  ideas: TestIdea[]
+}

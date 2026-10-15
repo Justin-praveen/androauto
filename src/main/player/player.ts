@@ -234,7 +234,8 @@ export class FlowPlayer {
       case 'assertText': {
         const expected = resolveText(String(p.text ?? ''), flow, this.deps.secret)
         const textOf = (n: UiNode): string => n.text || descendantText(n)
-        const hit = await this.waitFor(step, (n) => textOf(n) === expected)
+        const matches = (n: UiNode): boolean => (p.contains ? textOf(n).includes(expected) : textOf(n) === expected)
+        const hit = await this.waitFor(step, matches)
         if (hit) return { locatorUsed: hit.strategy }
         const seen = this.lastTree && locate(this.lastTree.tree, step.target?.locators ?? [])
         throw new StepError(

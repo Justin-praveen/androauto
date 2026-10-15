@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, chmodSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { Flow, FlowSummary, Project, ProjectSummary, Run, RunSummary } from '@shared/types'
+import type { AiSettings, Flow, FlowSummary, Project, ProjectSummary, Run, RunSummary, TestIdeas } from '@shared/types'
 import type { NewProjectInput } from '@shared/api'
 import type { StepArtifacts } from './recorder/engine'
 
@@ -220,6 +220,51 @@ export class Store {
         const failed = steps.findIndex((s) => s.status === 'failed')
         return { ...rest, stepCount: steps.length, failedStep: failed >= 0 ? failed + 1 : null }
       })
+  }
+
+  // ---- AI --------------------------------------------------------------------------------
+
+  /** UI XML captured for a step while recording, if any. */
+  readSnapshotXml(projectId: string, flow: Flow, stepId: string): string | null {
+    const step = flow.steps.find((s) => s.id === stepId)
+    if (!step?.snapshot || !/^[\w-]+\/snapshots\/[\w-]+$/.test(step.snapshot)) return null
+    const path = join(this.flowsDir(projectId), `${step.snapshot}.xml`)
+    return existsSync(path) ? readFileSync(path, 'utf8') : null
+  }
+
+  private ideasPath(projectId: string, flowId: string): string {
+    if (!/^flw_[\w-]+$/.test(flowId)) throw new Error(`Bad flow id: ${flowId}`)
+    return join(this.projectDir(projectId), 'ai', `${flowId}.json`)
+  }
+
+  getIdeas(projectId: string, flowId: string): TestIdeas | null {
+    const path = this.ideasPath(projectId, flowId)
+    return existsSync(path) ? readJson<TestIdeas>(path) : null
+  }
+
+  saveIdeas(projectId: string, ideas: TestIdeas): void {
+    const path = this.ideasPath(projectId, ideas.flowId)
+    mkdirSync(join(this.projectDir(projectId), 'ai'), { recursive: true })
+    writeJson(path, ideas)
+  }
+
+  getAiSettings(): AiSettings & { apiKey: string } {
+    const path = join(this.root, 'settings.json')
+    const saved = existsSync(path) ? (readJson<{ ai?: Partial<AiSettings & { apiKey: string }> }>(path).ai ?? {}) : {}
+    return { baseUrl: 'http://localhost:20128/v1', model: '', temperature: 0.4, apiKey: '', ...saved }
+  }
+
+  /** apiKey: undefined keeps the stored key, '' clears it. */
+  saveAiSettings(patch: Partial<AiSettings> & { apiKey?: string }): void {
+    const path = join(this.root, 'settings.json')
+    const all = existsSync(path) ? readJson<Record<string, unknown>>(path) : {}
+    const next = { ...this.getAiSettings(), ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) }
+    writeJson(path, { ...all, ai: next })
+    try {
+      chmodSync(path, 0o600)
+    } catch {
+      // best effort
+    }
   }
 
   // ---- secrets -----------------------------------------------------------------------------

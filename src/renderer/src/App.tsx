@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Circle, FolderKanban, ListChecks, Monitor, Moon, PlayCircle, Smartphone, Sun } from 'lucide-react'
+import { Circle, FolderKanban, ListChecks, Monitor, Moon, PlayCircle, Settings, Smartphone, Sun } from 'lucide-react'
 import { cx, Dot } from './components/ui'
 import { isMock } from './lib/api'
 import { useApp, type Page } from './lib/state'
@@ -7,7 +7,9 @@ import { DevicesPage } from './pages/Devices'
 import { FlowsPage } from './pages/Flows'
 import { ProjectsPage } from './pages/Projects'
 import { RecorderPage } from './pages/Recorder'
+import { IdeasPage } from './pages/Ideas'
 import { RunsPage } from './pages/Runs'
+import { SettingsPage } from './pages/Settings'
 
 type Theme = 'system' | 'light' | 'dark'
 
@@ -42,7 +44,8 @@ const NAV: { id: Page; label: string; icon: typeof Circle; needsProject?: boolea
   { id: 'flows', label: 'Flows', icon: ListChecks, needsProject: true },
   { id: 'recorder', label: 'Recorder', icon: Circle, needsProject: true },
   { id: 'runs', label: 'Runs', icon: PlayCircle, needsProject: true },
-  { id: 'devices', label: 'Devices', icon: Smartphone }
+  { id: 'devices', label: 'Devices', icon: Smartphone },
+  { id: 'settings', label: 'Settings', icon: Settings }
 ]
 
 export function App() {
@@ -88,7 +91,7 @@ export function App() {
                 onClick={() => (n.id === 'runs' ? openRun(null) : go(n.id))}
                 className={cx(
                   'flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-40',
-                  page === n.id ? 'bg-accent-soft font-medium text-accent' : 'text-muted hover:bg-sunken hover:text-fg'
+                  page === n.id || (page === 'ideas' && n.id === 'flows') ? 'bg-accent-soft font-medium text-accent' : 'text-muted hover:bg-sunken hover:text-fg'
                 )}
               >
                 <Icon size={16} className={n.id === 'recorder' && recording ? 'fill-rec text-rec pulse' : undefined} />
@@ -129,6 +132,8 @@ export function App() {
             {page === 'flows' && <FlowsPage />}
             {page === 'recorder' && <RecorderPage />}
             {page === 'runs' && <RunsPage />}
+            {page === 'ideas' && <IdeasPage />}
+            {page === 'settings' && <SettingsPage />}
             {page === 'devices' && <DevicesPage />}
           </div>
         </main>

@@ -7,6 +7,7 @@ import type { Adb } from './adb/adb'
 import type { AppiumManager } from './appium-manager'
 import type { DeviceManager } from './device-manager'
 import type { Mirror } from './mirror'
+import type { AiService } from './ai/service'
 import type { RunService } from './player/runner'
 import type { RecorderService } from './recorder/service'
 import type { Store } from './store'
@@ -19,6 +20,7 @@ export interface Services {
   mirror: Mirror
   recorder: RecorderService
   runner: RunService
+  ai: AiService
 }
 
 type Handlers = { [K in keyof InvokeApi]: (...args: Parameters<InvokeApi[K]>) => ReturnType<InvokeApi[K]> | Promise<ReturnType<InvokeApi[K]>> }
@@ -36,7 +38,7 @@ export async function setupCheck(svc: Services): Promise<SetupCheck> {
 }
 
 export function registerIpc(svc: Services, send: <K extends keyof EventApi>(ch: K, payload: EventApi[K]) => void): void {
-  const { store, devices, appium, mirror, recorder, runner } = svc
+  const { store, devices, appium, mirror, recorder, runner, ai } = svc
   const h: Handlers = {
     'projects:list': () => store.listProjects(),
     'projects:create': (input) => store.createProject(input),
@@ -91,7 +93,15 @@ export function registerIpc(svc: Services, send: <K extends keyof EventApi>(ch: 
     'runs:image': (projectId, runId, file) => {
       const type = file.endsWith('.png') ? 'image/png' : 'text/xml'
       return `data:${type};base64,${store.readRunFile(projectId, runId, file).toString('base64')}`
-    }
+    },
+
+    'ai:settings': () => ai.settings(),
+    'ai:saveSettings': (patch) => ai.saveSettings(patch),
+    'ai:models': (patch) => ai.models(patch),
+    'ai:test': () => ai.test(),
+    'ai:suggest': (projectId, flowId, opts) => ai.suggest(projectId, flowId, opts),
+    'ai:ideas': (projectId, flowId) => ai.ideas(projectId, flowId),
+    'ai:createFlows': (projectId, flowId, ideaIds) => ai.createFlows(projectId, flowId, ideaIds)
   }
 
   for (const [ch, fn] of Object.entries(h)) {

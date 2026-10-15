@@ -40,6 +40,17 @@ Each step looks for its element with the recorded locators in order (id, accessi
 
 When Appium and the UiAutomator2 driver are installed, androauto starts Appium in the background and reads the screen through it (faster). Without them it falls back to `uiautomator dump` over adb, which is slower but needs nothing extra. The top of the Recorder says which one is in use. Replay uses the same choice.
 
+## AI test cases
+
+Record a flow once and let the AI suggest the other ways it should be tested: empty and invalid inputs, length limits, special characters, repeated taps, back/home interruptions, security strings, and so on.
+
+1. **Settings › AI provider**: enter the base URL of any OpenAI-compatible API (OmniRoute's default is `http://localhost:20128/v1`; use your own if it runs elsewhere), your API key, and a model (**Load models** lists what the server offers). **Test connection** checks it.
+2. On **Flows**, click ✨ on a flow, then **Generate**. You can pick how many test cases and add a focus such as "password rules".
+3. Each test case shows its category, priority, the changes to the flow and the expected result. Cases replay can't do (rotation, network off) are marked *manual* with steps for a tester.
+4. Tick the ones you want and click **Create flows** (or **Create and run**). Each becomes a new flow tagged `ai`, so it runs like any other. **Export CSV** saves the list for a test-case sheet.
+
+The AI sees the step list and the screen text recorded with each step. Password values are never sent. The API key is stored in `~/androauto/settings.json` (readable only by you). Suggestions are saved in `projects/<id>/ai/<flow-id>.json`.
+
 ## Where things are saved
 
 ```
@@ -86,6 +97,7 @@ src/main/adb/        adb wrapper and output parsers
 src/main/hierarchy/  UI XML parsing, element-at-point, locator generation
 src/main/recorder/   getevent parsing, gesture classification, recorder engine, save
 src/main/player/     flow player (find element, act, screenshot) and the batch runner
+src/main/ai/         OpenAI-compatible client, test-case prompt, parsing, idea-to-flow
 src/main/            device manager, Appium manager, mirror, store, IPC, window
 src/renderer/        React UI (Projects, Flows, Recorder, Runs, Devices)
 tests/               vitest suites and fixtures

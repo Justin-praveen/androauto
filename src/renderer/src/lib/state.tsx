@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { BatchStatus, Device, ProjectSummary, RecorderStatus, SetupCheck } from '@shared/types'
 import { api } from './api'
 
-export type Page = 'projects' | 'flows' | 'recorder' | 'runs' | 'devices'
+export type Page = 'projects' | 'flows' | 'ideas' | 'recorder' | 'runs' | 'devices' | 'settings'
 
 interface AppState {
   page: Page
@@ -21,6 +21,9 @@ interface AppState {
   /** Run report open on the Runs page; null shows the overview. */
   runId: string | null
   openRun: (id: string | null) => void
+  /** Flow whose AI test ideas are open. */
+  ideasFlowId: string | null
+  openIdeas: (flowId: string) => void
   setup: SetupCheck | null
   refreshSetup: () => Promise<void>
   toast: (msg: string, kind?: 'error' | 'ok') => void
@@ -57,6 +60,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [setup, setSetup] = useState<SetupCheck | null>(null)
   const [batch, setBatch] = useState<BatchStatus | null>(null)
   const [runId, setRunId] = useState<string | null>(null)
+  const [ideasFlowId, setIdeasFlowId] = useState<string | null>(null)
+  const openIdeas = useCallback((flowId: string) => {
+    setIdeasFlowId(flowId)
+    setPage('ideas')
+  }, [])
   const openRun = useCallback((id: string | null) => {
     setRunId(id)
     setPage('runs')
@@ -122,12 +130,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       batch,
       runId,
       openRun,
+      ideasFlowId,
+      openIdeas,
       setup,
       refreshSetup,
       toast,
       toastMsg
     }),
-    [page, projects, reloadProjects, projectId, setProjectId, devices, serial, setSerial, recorder, batch, runId, openRun, setup, refreshSetup, toast, toastMsg]
+    [page, projects, reloadProjects, projectId, setProjectId, devices, serial, setSerial, recorder, batch, runId, openRun, ideasFlowId, openIdeas, setup, refreshSetup, toast, toastMsg]
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
